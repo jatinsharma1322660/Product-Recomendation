@@ -9,11 +9,11 @@ from PIL import Image
 import os
 
 # --- NLTK punkt download fix for Streamlit Cloud ---
-nltk.data.path.append('./nltk_data')  # Tell NLTK to look here
+nltk.data.path.append('./nltk_data')
 try:
-    nltk.data.find('tokenizers/punkt')  # Check if 'punkt' is present
+    nltk.data.find('tokenizers/punkt')
 except LookupError:
-    nltk.download('punkt', download_dir='./nltk_data')  # Download if not
+    nltk.download('punkt', download_dir='./nltk_data')
 
 # --- Load the dataset ---
 data = pd.read_csv('product_recomendation.csv', encoding='latin1')
@@ -21,6 +21,9 @@ data = pd.read_csv('product_recomendation.csv', encoding='latin1')
 # Drop 'id' column if it exists
 if 'id' in data.columns:
     data = data.drop('id', axis=1)
+
+# Drop rows with missing Title or Description
+data = data.dropna(subset=['Title', 'Description'])
 
 # --- Define tokenizer and stemmer ---
 stemmer = SnowballStemmer('english')
@@ -30,11 +33,14 @@ def tokenize_and_stem(text):
         tokens = nltk.word_tokenize(str(text).lower())
         stems = [stemmer.stem(t) for t in tokens if t.isalpha()]
         return stems
-    except Exception as e:
+    except Exception:
         return []
 
 # Add a column for stemmed tokens
-data['stemmed_tokens'] = data.apply(lambda row: tokenize_and_stem(row['Title'] + ' ' + row['Description']), axis=1)
+data['stemmed_tokens'] = data.apply(
+    lambda row: tokenize_and_stem(str(row.get('Title', '')) + ' ' + str(row.get('Description', ''))),
+    axis=1
+)
 
 # TF-IDF Vectorizer with custom tokenizer
 tfidf_vectorizer = TfidfVectorizer(tokenizer=tokenize_and_stem, token_pattern=None)
