@@ -23,7 +23,7 @@ if 'id' in data.columns:
 # Drop rows with missing title or description
 data = data.dropna(subset=['Title', 'Description'])
 
-# Lowercase Category column for reliable matching
+# Lowercase Category column for matching
 data['Category'] = data['Category'].str.lower()
 
 # --- Define tokenizer and stemmer ---
@@ -43,7 +43,7 @@ data['stemmed_tokens'] = data.apply(
     axis=1
 )
 
-# TF-IDF Vectorizer
+# TF-IDF Vectorizer with custom tokenizer
 tfidf_vectorizer = TfidfVectorizer(tokenizer=tokenize_and_stem, token_pattern=None)
 
 # Cosine similarity function
@@ -58,24 +58,24 @@ def cosine_sim(text1, text2):
     except ValueError:
         return 0.0
 
-# --- Search Products ---
+# --- Search Products (no filtering out low similarity) ---
 def search_products(query):
     query_stemmed = tokenize_and_stem(query.lower())
-
-    # Category filter based on keyword match
-    category_keywords = ['laptop', 'mobile', 'headphone', 'camera', 'speaker', 'watch', 'charger', 'audio']
     filtered_data = data.copy()
 
+    # Optional: category keyword filtering
+    category_keywords = ['laptop', 'mobile', 'headphone', 'camera', 'speaker', 'watch', 'charger', 'audio']
     for keyword in category_keywords:
         if keyword in query.lower():
-            filtered_data = data[data['Category'].str.contains(keyword)]
+            filtered_data = filtered_data[filtered_data['Category'].str.contains(keyword)]
             break
 
     # Compute similarities
     similarities = filtered_data['stemmed_tokens'].apply(lambda x: cosine_sim(query_stemmed, x))
     results = filtered_data.copy()
     results['similarity'] = similarities
-    results = results[results['similarity'] > 0]
+
+    # ✅ Always show top 10 results (even if similarity is low)
     results = results.sort_values(by='similarity', ascending=False).head(10)
 
     columns = ['Title', 'Description', 'similarity']
@@ -84,7 +84,7 @@ def search_products(query):
 
     return results[columns]
 
-# --- Streamlit App UI ---
+# --- Streamlit UI ---
 img = Image.open('Untitled.png')
 st.image(img, width=600)
 st.title("🔍 Product Recommendation System")
@@ -94,7 +94,4 @@ submit = st.button('Search')
 
 if submit and query:
     results = search_products(query)
-    if not results.empty:
-        st.write(results)
-    else:
-        st.warning("❌ No results found. Try a different search.")
+    st.write(results)
