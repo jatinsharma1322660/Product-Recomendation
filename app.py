@@ -16,12 +16,14 @@ except LookupError:
 # --- Load the dataset ---
 data = pd.read_csv('product_recomendation.csv', encoding='latin1')
 
-# Drop 'id' column if it exists
-if 'id' in data.columns:
-    data = data.drop('id', axis=1)
+# Ensure required columns exist
+required_cols = ['Title', 'Description']
+if not all(col in data.columns for col in required_cols):
+    st.error("CSV must contain 'Title' and 'Description' columns.")
+    st.stop()
 
-# Drop rows missing title or description
-data = data.dropna(subset=['Title', 'Description'])
+# Drop missing rows
+data = data.dropna(subset=required_cols)
 
 # --- Define tokenizer and stemmer ---
 stemmer = SnowballStemmer('english')
@@ -34,27 +36,25 @@ def tokenize_and_stem(text):
     except Exception:
         return []
 
-# Add a column for stemmed tokens
+# Add stemmed token column
 data['stemmed_tokens'] = data.apply(
-    lambda row: tokenize_and_stem(str(row.get('Title', '')) + ' ' + str(row.get('Description', ''))),
+    lambda row: tokenize_and_stem(row['Title'] + ' ' + row['Description']),
     axis=1
 )
 
-# TF-IDF Vectorizer with custom tokenizer
+# TF-IDF with custom tokenizer
 tfidf_vectorizer = TfidfVectorizer(tokenizer=tokenize_and_stem, token_pattern=None)
 
 # Cosine similarity function
 def cosine_sim(text1, text2):
-    text1_joined = ' '.join(text1)
-    text2_joined = ' '.join(text2)
-
-    if not text1_joined.strip() or not text2_joined.strip():
+    t1 = ' '.join(text1)
+    t2 = ' '.join(text2)
+    if not t1.strip() or not t2.strip():
         return 0.0
-
     try:
-        tfidf_matrix = tfidf_vectorizer.fit_transform([text1_joined, text2_joined])
+        tfidf_matrix = tfidf_vectorizer.fit_transform([t1, t2])
         return cosine_similarity(tfidf_matrix)[0][1]
-    except ValueError:
+    except:
         return 0.0
 
 # Search products function
@@ -64,29 +64,27 @@ def search_products(query):
     results = data.copy()
     results['similarity'] = similarities
 
-    # Filter out rows with 0 similarity
-    results = results[results['similarity'] > 0]
+    # If no similarity > 0, fallback to top 10
+    if results['similarity'].max() == 0:
+        fallback = results.sort_values(by='similarity', ascending=False).head(10)
+        return fallback[['Title', 'Description', 'Category', 'similarity']]
+    
+    filtered = results[results['similarity'] > 0]
+    top_matches = filtered.sort_values(by='similarity', ascending=False).head(10)
+    return top_matches[['Title', 'Description', 'Category', 'similarity']]
 
-    # Sort and get top 10
-    results = results.sort_values(by='similarity', ascending=False).head(10)
-
-    columns = ['Title', 'Description', 'similarity']
-    if 'Category' in data.columns:
-        columns.insert(2, 'Category')
-
-    return results[columns]
-
-# --- Streamlit App ---
+# --- Streamlit Interface ---
 img = Image.open('Untitled.png')
 st.image(img, width=600)
-st.title("Search Engine and Product Recommendation System")
+st.title("🔍 Product Search & Recommendation System")
 
-query = st.text_input("Enter Product Name")
-submit = st.button('Search')
+query = st.text_input("Enter product name to search:")
+submit = st.button("Search")
 
 if submit and query:
     results = search_products(query)
     if not results.empty:
-        st.write(results)
+        st.success(f"Top {len(results)} matching products found:")
+        st.dataframe(results, use_container_width=True)
     else:
-        st.warning("No results found. Try another search.")
+        st.warning("No results found. Try a different keyword.")
