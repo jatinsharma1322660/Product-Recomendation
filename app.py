@@ -1,12 +1,10 @@
 import pandas as pd
-import numpy as np
 import nltk
 from nltk.stem.snowball import SnowballStemmer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import streamlit as st
 from PIL import Image
-import os
 
 # --- NLTK punkt download fix for Streamlit Cloud ---
 nltk.data.path.append('./nltk_data')
@@ -49,8 +47,15 @@ tfidf_vectorizer = TfidfVectorizer(tokenizer=tokenize_and_stem, token_pattern=No
 def cosine_sim(text1, text2):
     text1_joined = ' '.join(text1)
     text2_joined = ' '.join(text2)
-    tfidf_matrix = tfidf_vectorizer.fit_transform([text1_joined, text2_joined])
-    return cosine_similarity(tfidf_matrix)[0][1]
+
+    if not text1_joined.strip() or not text2_joined.strip():
+        return 0.0
+
+    try:
+        tfidf_matrix = tfidf_vectorizer.fit_transform([text1_joined, text2_joined])
+        return cosine_similarity(tfidf_matrix)[0][1]
+    except ValueError:
+        return 0.0
 
 # Search products function
 def search_products(query):
@@ -59,7 +64,12 @@ def search_products(query):
     results = data.copy()
     results['similarity'] = similarities
     results = results.sort_values(by='similarity', ascending=False).head(10)
-    return results[['Title', 'Description', 'Category', 'similarity']]
+
+    columns = ['Title', 'Description', 'similarity']
+    if 'Category' in data.columns:
+        columns.insert(2, 'Category')
+
+    return results[columns]
 
 # --- Streamlit app interface ---
 img = Image.open('Untitled.png')
