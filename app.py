@@ -6,7 +6,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 import streamlit as st
 from PIL import Image
 
-# --- NLTK punkt download fix for Streamlit Cloud ---
+# --- NLTK punkt setup for Streamlit Cloud ---
 nltk.data.path.append('./nltk_data')
 try:
     nltk.data.find('tokenizers/punkt')
@@ -20,7 +20,7 @@ data = pd.read_csv('product_recomendation.csv', encoding='latin1')
 if 'id' in data.columns:
     data = data.drop('id', axis=1)
 
-# Drop rows with missing Title or Description
+# Drop rows missing title or description
 data = data.dropna(subset=['Title', 'Description'])
 
 # --- Define tokenizer and stemmer ---
@@ -63,6 +63,11 @@ def search_products(query):
     similarities = data['stemmed_tokens'].apply(lambda x: cosine_sim(query_stemmed, x))
     results = data.copy()
     results['similarity'] = similarities
+
+    # Filter out rows with 0 similarity
+    results = results[results['similarity'] > 0]
+
+    # Sort and get top 10
     results = results.sort_values(by='similarity', ascending=False).head(10)
 
     columns = ['Title', 'Description', 'similarity']
@@ -71,7 +76,7 @@ def search_products(query):
 
     return results[columns]
 
-# --- Streamlit app interface ---
+# --- Streamlit App ---
 img = Image.open('Untitled.png')
 st.image(img, width=600)
 st.title("Search Engine and Product Recommendation System")
