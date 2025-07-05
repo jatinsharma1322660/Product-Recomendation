@@ -16,14 +16,12 @@ except LookupError:
 # --- Load the dataset ---
 data = pd.read_csv('product_recomendation.csv', encoding='latin1')
 
-# Ensure required columns exist
-required_cols = ['Title', 'Description']
-if not all(col in data.columns for col in required_cols):
-    st.error("CSV must contain 'Title' and 'Description' columns.")
-    st.stop()
+# Drop 'id' column if it exists
+if 'id' in data.columns:
+    data = data.drop('id', axis=1)
 
-# Drop missing rows
-data = data.dropna(subset=required_cols)
+# Drop rows with missing title or description
+data = data.dropna(subset=['Title', 'Description'])
 
 # --- Define tokenizer and stemmer ---
 stemmer = SnowballStemmer('english')
@@ -36,55 +34,65 @@ def tokenize_and_stem(text):
     except Exception:
         return []
 
-# Add stemmed token column
+# Add a column for stemmed tokens
 data['stemmed_tokens'] = data.apply(
-    lambda row: tokenize_and_stem(row['Title'] + ' ' + row['Description']),
+    lambda row: tokenize_and_stem(str(row.get('Title', '')) + ' ' + str(row.get('Description', ''))),
     axis=1
 )
 
-# TF-IDF with custom tokenizer
+# TF-IDF Vectorizer with custom tokenizer
 tfidf_vectorizer = TfidfVectorizer(tokenizer=tokenize_and_stem, token_pattern=None)
 
 # Cosine similarity function
 def cosine_sim(text1, text2):
-    t1 = ' '.join(text1)
-    t2 = ' '.join(text2)
-    if not t1.strip() or not t2.strip():
+    text1_joined = ' '.join(text1)
+    text2_joined = ' '.join(text2)
+    if not text1_joined.strip() or not text2_joined.strip():
         return 0.0
     try:
-        tfidf_matrix = tfidf_vectorizer.fit_transform([t1, t2])
+        tfidf_matrix = tfidf_vectorizer.fit_transform([text1_joined, text2_joined])
         return cosine_similarity(tfidf_matrix)[0][1]
-    except:
+    except ValueError:
         return 0.0
 
-# Search products function
+# --- Updated Search Products Function with Category Filter ---
 def search_products(query):
-    query_stemmed = tokenize_and_stem(query)
-    similarities = data['stemmed_tokens'].apply(lambda x: cosine_sim(query_stemmed, x))
-    results = data.copy()
+    query_stemmed = tokenize_and_stem(query.lower())
+
+    # Filter by category keyword if present
+    category_keywords = ['laptop', 'mobile', 'headphone', 'camera', 'speaker', 'watch', 'charger']
+    filtered_data = data.copy()
+
+    for keyword in category_keywords:
+        if keyword in query.lower():
+            filtered_data = data[data['Category'].str.lower().str.contains(keyword)]
+            break
+
+    # Calculate similarity
+    similarities = filtered_data['stemmed_tokens'].apply(lambda x: cosine_sim(query_stemmed, x))
+    results = filtered_data.copy()
     results['similarity'] = similarities
+    results = results[results['similarity'] > 0]
+    results = results.sort_values(by='similarity', ascending=False).head(10)
 
-    # If no similarity > 0, fallback to top 10
-    if results['similarity'].max() == 0:
-        fallback = results.sort_values(by='similarity', ascending=False).head(10)
-        return fallback[['Title', 'Description', 'Category', 'similarity']]
-    
-    filtered = results[results['similarity'] > 0]
-    top_matches = filtered.sort_values(by='similarity', ascending=False).head(10)
-    return top_matches[['Title', 'Description', 'Category', 'similarity']]
+    # Columns to return
+    columns = ['Title', 'Description', 'similarity']
+    if 'Category' in results.columns:
+        columns.insert(2, 'Category')
 
-# --- Streamlit Interface ---
+    return results[columns]
+
+# --- Streamlit App UI ---
 img = Image.open('Untitled.png')
 st.image(img, width=600)
-st.title("🔍 Product Search & Recommendation System")
+st.title("🔍 Product Recommendation System")
 
-query = st.text_input("Enter product name to search:")
-submit = st.button("Search")
+query = st.text_input("Enter product name or keyword (e.g. 'laptop', 'headphones')")
+submit = st.button('Search')
 
 if submit and query:
     results = search_products(query)
     if not results.empty:
-        st.success(f"Top {len(results)} matching products found:")
-        st.dataframe(results, use_container_width=True)
+        st.write(results)
     else:
-        st.warning("No results found. Try a different keyword.")
+        st.warning("❌ No results found. Try a different search.")
