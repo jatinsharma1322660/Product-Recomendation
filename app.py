@@ -23,6 +23,9 @@ if 'id' in data.columns:
 # Drop rows with missing title or description
 data = data.dropna(subset=['Title', 'Description'])
 
+# Lowercase Category column for reliable matching
+data['Category'] = data['Category'].str.lower()
+
 # --- Define tokenizer and stemmer ---
 stemmer = SnowballStemmer('english')
 
@@ -40,7 +43,7 @@ data['stemmed_tokens'] = data.apply(
     axis=1
 )
 
-# TF-IDF Vectorizer with custom tokenizer
+# TF-IDF Vectorizer
 tfidf_vectorizer = TfidfVectorizer(tokenizer=tokenize_and_stem, token_pattern=None)
 
 # Cosine similarity function
@@ -55,27 +58,26 @@ def cosine_sim(text1, text2):
     except ValueError:
         return 0.0
 
-# --- Updated Search Products Function with Category Filter ---
+# --- Search Products ---
 def search_products(query):
     query_stemmed = tokenize_and_stem(query.lower())
 
-    # Filter by category keyword if present
-    category_keywords = ['laptop', 'mobile', 'headphone', 'camera', 'speaker', 'watch', 'charger']
+    # Category filter based on keyword match
+    category_keywords = ['laptop', 'mobile', 'headphone', 'camera', 'speaker', 'watch', 'charger', 'audio']
     filtered_data = data.copy()
 
     for keyword in category_keywords:
         if keyword in query.lower():
-            filtered_data = data[data['Category'].str.lower().str.contains(keyword)]
+            filtered_data = data[data['Category'].str.contains(keyword)]
             break
 
-    # Calculate similarity
+    # Compute similarities
     similarities = filtered_data['stemmed_tokens'].apply(lambda x: cosine_sim(query_stemmed, x))
     results = filtered_data.copy()
     results['similarity'] = similarities
     results = results[results['similarity'] > 0]
     results = results.sort_values(by='similarity', ascending=False).head(10)
 
-    # Columns to return
     columns = ['Title', 'Description', 'similarity']
     if 'Category' in results.columns:
         columns.insert(2, 'Category')
